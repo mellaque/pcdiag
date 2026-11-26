@@ -1,0 +1,7 @@
+version: 2
+updates:
+  # Раз в месяц предлагает PR с новыми версиями actions/checkout и upload-artifact.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

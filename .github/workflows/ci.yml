@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: windows / ${{ matrix.shell }}
+    runs-on: windows-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # powershell = Windows PowerShell 5.1 (как на ПК филиалов), pwsh = PowerShell 7.
+        shell: [powershell, pwsh]
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: PowerShell version
+        run: $PSVersionTable | Format-Table -AutoSize | Out-String -Width 200
+
+      - name: Install pinned modules
+        run: ./build.ps1 -Task Deps
+
+      - name: Lint
+        run: ./build.ps1 -Task Lint
+
+      - name: Unit tests
+        run: ./build.ps1 -Task Test
+
+      - name: Smoke run on the runner
+        run: ./build.ps1 -Task Smoke
+
+      - name: Upload test results and smoke report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: out-${{ matrix.shell }}
+          path: out/
+          if-no-files-found: ignore
+          retention-days: 14
