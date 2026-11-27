@@ -107,3 +107,96 @@ function Get-PcDiagRegistryValue {
     if ($null -eq $item) { return $null }
     $item.$Name
 }
+
+function Get-PcDiagHibernateSetting {
+    <#
+    .SYNOPSIS
+        Флаги быстрого запуска и гибернации. Быстрый запуск реально работает,
+        только если включены оба: без гибернации ядру некуда сохраняться.
+    #>
+    [CmdletBinding()]
+    param()
+    $powerKey = 'HKLM:\SYSTEM\CurrentControlSet\Control\Power'
+    $hibernate = Get-PcDiagRegistryValue -Path $powerKey -Name 'HibernateEnabled'
+    # На части систем явного значения нет (гибернацию не переключали через powercfg /h),
+    # тогда действует значение по умолчанию.
+    if ($null -eq $hibernate) { $hibernate = Get-PcDiagRegistryValue -Path $powerKey -Name 'HibernateEnabledDefault' }
+    [ordered]@{
+        HiberbootEnabled = Get-PcDiagRegistryValue -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power' -Name 'HiberbootEnabled'
+        HibernateEnabled = $hibernate
+    }
+}
+
+function Get-PcDiagWinEvent {
+    <#
+    .SYNOPSIS
+        Get-WinEvent, у которого «событий нет» — пустой результат, а не ошибка.
+        Остальные ошибки (нет журнала, нет доступа) пробрасываются: движок покажет их как ERR.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)] [hashtable]$Filter)
+    try {
+        @(Get-WinEvent -FilterHashtable $Filter -ErrorAction Stop)
+    }
+    catch {
+        if ($_.FullyQualifiedErrorId -like 'NoMatchingEventsFound*') { return }
+        throw
+    }
+}
+
+function ConvertFrom-PcDiagEventData {
+    <#
+    .SYNOPSIS
+        Именованные поля EventData события в виде словаря Name -> текст.
+        Безымянные поля (как у EventLog 6008) пропускаются: их смысл зависит от позиции и языка.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)] $Record)
+    $result = @{}
+    $xml = [xml]$Record.ToXml()
+    # local-name(): у событий есть пространство имён, а обращение через точки падает в StrictMode, если узла нет.
+    foreach ($node in @($xml.SelectNodes("//*[local-name()='EventData']/*[local-name()='Data']"))) {
+        if ($node.HasAttribute('Name')) { $result[$node.GetAttribute('Name')] = $node.InnerText }
+    }
+    $result
+}
+
+function ConvertTo-PcDiagInt64 {
+    <# Десятичное число из текста поля события; пустое или нечисловое значение — 0. #>
+    [CmdletBinding()]
+    [OutputType([long])]
+    param([AllowNull()] $Value)
+    $number = [long]0
+    if ([long]::TryParse([string]$Value, [ref]$number)) { return $number }
+    [long]0
+}
+
+function Get-PcDiagLeafName {
+    <# Имя файла из пути Windows. Split-Path на Linux и macOS не понимает обратную косую черту. #>
+    [CmdletBinding()]
+    [OutputType([string])]
+    param([AllowNull()] [AllowEmptyString()] [string]$Path)
+    if (-not $Path) { return '' }
+    ($Path -split '[\\/]')[-1]
+}
+
+function Get-PcDiagField {
+    <#
+    .SYNOPSIS
+        Поле данных проверки или $null, если его нет. В StrictMode обращение через точку
+        к отсутствующему ключу [ordered]-словаря или свойству объекта бросает исключение.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [AllowNull()] $Data,
+        [Parameter(Mandatory)] [string]$Name
+    )
+    if ($null -eq $Data) { return $null }
+    if ($Data -is [System.Collections.IDictionary]) {
+        if ($Data.Contains($Name)) { return , $Data[$Name] }
+        return $null
+    }
+    $property = $Data.PSObject.Properties[$Name]
+    if ($null -eq $property) { return $null }
+    , $property.Value
+}

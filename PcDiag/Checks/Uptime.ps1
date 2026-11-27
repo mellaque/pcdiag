@@ -7,12 +7,7 @@ function Get-UptimeData {
     [CmdletBinding()]
     param()
     $os = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
-
-    $powerKey = 'HKLM:\SYSTEM\CurrentControlSet\Control\Power'
-    $hibernate = Get-PcDiagRegistryValue -Path $powerKey -Name 'HibernateEnabled'
-    # На части систем явного значения нет (гибернацию не переключали через powercfg /h),
-    # тогда действует значение по умолчанию.
-    if ($null -eq $hibernate) { $hibernate = Get-PcDiagRegistryValue -Path $powerKey -Name 'HibernateEnabledDefault' }
+    $hibernate = Get-PcDiagHibernateSetting
 
     [ordered]@{
         Caption          = [string]$os.Caption
@@ -22,8 +17,8 @@ function Get-UptimeData {
         # Время берём у самой ОС, а не Get-Date: так Test-Uptime не зависит от часов того, кто разбирает отчёт.
         LocalDateTime    = $os.LocalDateTime.ToString('s')
         # Быстрый запуск: при «Завершении работы» ядро уходит в гибернацию, аптайм не сбрасывается.
-        HiberbootEnabled = Get-PcDiagRegistryValue -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power' -Name 'HiberbootEnabled'
-        HibernateEnabled = $hibernate
+        HiberbootEnabled = $hibernate.HiberbootEnabled
+        HibernateEnabled = $hibernate.HibernateEnabled
     }
 }
 
