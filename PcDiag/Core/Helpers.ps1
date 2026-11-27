@@ -130,7 +130,7 @@ function Get-PcDiagHibernateSetting {
 function Get-PcDiagWinEvent {
     <#
     .SYNOPSIS
-        Get-WinEvent, у которого «событий нет» — пустой результат, а не ошибка.
+        Get-WinEvent, у которого «событий нет» и «нет такого источника» — пустой результат, а не ошибка.
         Остальные ошибки (нет журнала, нет доступа) пробрасываются: движок покажет их как ERR.
     #>
     [CmdletBinding()]
@@ -139,7 +139,10 @@ function Get-PcDiagWinEvent {
         @(Get-WinEvent -FilterHashtable $Filter -ErrorAction Stop)
     }
     catch {
-        if ($_.FullyQualifiedErrorId -like 'NoMatchingEventsFound*') { return }
+        # Пустой результат: под фильтр ничего не попало, или такого источника на этом ПК нет
+        # (например, драйвера iaStorA или провайдера, не пишущего в этот журнал).
+        $id = [string]$_.FullyQualifiedErrorId
+        if ($id -like 'NoMatchingEventsFound*' -or $id -like 'NoMatchingProvidersFound*' -or $id -like 'LogsAndProvidersDontOverlap*') { return }
         throw
     }
 }
