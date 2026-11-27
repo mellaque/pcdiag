@@ -69,9 +69,13 @@ function Get-DiskHealthData {
     foreach ($disk in @(Get-DiskHealthDisk)) { $diskInfo[[string]$disk.Number] = $disk }
 
     $disks = @(foreach ($physical in @(Get-DiskHealthPhysicalDisk | Sort-Object -Property { [int]$_.DeviceId })) {
+            # USB-диски не спрашиваем: мост всё равно отдаёт нули, а запрос может ждать таймаута
+            # (на внешнем диске через USB-мост замерено 90 с из 95 на всю проверку).
             $counter = $null
-            try { $counter = Get-DiskHealthCounter -PhysicalDisk $physical }
-            catch { $counter = $null }
+            if ([string]$physical.BusType -ne 'USB') {
+                try { $counter = Get-DiskHealthCounter -PhysicalDisk $physical }
+                catch { $counter = $null }
+            }
 
             $info = $diskInfo[[string]$physical.DeviceId]
             $isSystem = $false

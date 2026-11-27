@@ -159,13 +159,15 @@ Describe 'Get-DiskHealthData' -Skip:(-not $onWindows) {
         Mock -ModuleName PcDiag Get-DiskHealthDisk {
             [pscustomobject]@{ Number = 0; IsSystem = $true; IsBoot = $true }
             [pscustomobject]@{ Number = 1; IsSystem = $false; IsBoot = $false }
+            [pscustomobject]@{ Number = 2; IsSystem = $false; IsBoot = $false }
         }
         Mock -ModuleName PcDiag Get-DiskHealthPhysicalDisk {
             [pscustomobject]@{ DeviceId = '1'; FriendlyName = 'Generic Flash Disk'; BusType = 'USB'; MediaType = 'Unspecified'; Size = 8GB; HealthStatus = 'Healthy'; OperationalStatus = @('OK'); SerialNumber = 'SECRET123' }
             [pscustomobject]@{ DeviceId = '0'; FriendlyName = 'Test NVMe 512'; BusType = 'NVMe'; MediaType = 'SSD'; Size = 512GB; HealthStatus = 'Healthy'; OperationalStatus = @('OK'); SerialNumber = 'SECRET456' }
+            [pscustomobject]@{ DeviceId = '2'; FriendlyName = 'Test SATA HDD'; BusType = 'SATA'; MediaType = 'HDD'; Size = 1TB; HealthStatus = 'Healthy'; OperationalStatus = @('OK'); SerialNumber = 'SECRET789' }
         }
         Mock -ModuleName PcDiag Get-DiskHealthCounter {
-            if ($PhysicalDisk.DeviceId -eq '1') { throw 'Not supported' }
+            if ($PhysicalDisk.DeviceId -eq '2') { throw 'Not supported' }
             [pscustomobject]@{ Temperature = 45; Wear = 0; PowerOnHours = $null; ReadErrorsUncorrected = $null; WriteErrorsUncorrected = $null }
         }
         Mock -ModuleName PcDiag Get-DiskHealthPartition {
@@ -198,10 +200,19 @@ Describe 'Get-DiskHealthData' -Skip:(-not $onWindows) {
         $data.Disks[1].BusType | Should -Be 'USB'
     }
 
-    It 'счётчики надёжности читаются, а сбой у USB-диска не роняет сбор' {
+    It 'счётчики надёжности читаются' {
         $data.Disks[0].CountersAvailable | Should -BeTrue
         $data.Disks[0].Temperature | Should -Be 45
+    }
+
+    It 'у USB-диска счётчики не запрашиваются вовсе: через мост это бывает очень долго' {
         $data.Disks[1].CountersAvailable | Should -Be $false
+        Should -Invoke -ModuleName PcDiag Get-DiskHealthCounter -Times 0 -Exactly -Scope Describe -ParameterFilter { $PhysicalDisk.DeviceId -eq '1' }
+    }
+
+    It 'сбой чтения счётчиков у внутреннего диска не роняет сбор' {
+        $data.Disks[2].CountersAvailable | Should -Be $false
+        $data.Disks[2].Model | Should -Be 'Test SATA HDD'
     }
 
     It 'серийные номера в данные не попадают' {

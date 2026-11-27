@@ -114,9 +114,21 @@ Describe 'Test-UnexpectedShutdown' {
     }
 
     It 'неизвестная программа выключения показывается по имени' {
-        $data = New-ShutdownData -Crashes @(New-Crash -Time '2026-11-10T10:00:00') `
+        $data = New-ShutdownData -Crashes @(New-Crash -Time '2026-11-10T10:00:00' -Sleep 3) `
             -Shutdowns @([ordered]@{ Time = '2026-11-09T18:00:00'; Process = 'tool.exe'; Action = ''; ReasonCode = '0x0' })
         (Invoke-TestShutdown -Data $data).Details[0] | Should -Match 'перед этим 09\.11 18:00 «выключение» \(tool\.exe\)$'
+    }
+
+    It 'для потери питания не пишет, как выключали перед этим' {
+        $data = New-ShutdownData -Crashes @(New-Crash -Time '2026-11-26T15:41:03') `
+            -Shutdowns @([ordered]@{ Time = '2026-11-20T04:01:39'; Process = 'TrustedInstaller.exe'; Action = 'Перезапустить'; ReasonCode = '0x80020003' })
+        (Invoke-TestShutdown -Data $data).Details[0] | Should -Be '26.11.2026 15:41 загрузка после внезапной потери питания или зависания'
+    }
+
+    It 'служба обновлений называется по-человечески' {
+        $data = New-ShutdownData -Crashes @(New-Crash -Time '2026-11-12T10:00:00' -Sleep 4) `
+            -Shutdowns @([ordered]@{ Time = '2026-11-11T06:44:20'; Process = 'MoUsoCoreWorker.exe'; Action = 'Перезапустить'; ReasonCode = '0x80020010' })
+        (Invoke-TestShutdown -Data $data).Details[0] | Should -Match '«Перезапустить» для установки обновлений$'
     }
 
     It 'при включённом быстром запуске объясняет сбои гибернации' {
